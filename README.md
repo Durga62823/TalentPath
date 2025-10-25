@@ -396,24 +396,6 @@ npm run build
 npm start
 ```
 
----
-
-## 📝 Environment Variables Reference
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | ✅ |
-| `NEXTAUTH_URL` | Application URL | ✅ |
-| `NEXTAUTH_SECRET` | NextAuth secret key | ✅ |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID | ✅ |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth secret | ✅ |
-| `ANTHROPIC_API_KEY` | Claude API key | ❌ |
-| `GEMINI_API_KEY` | Gemini API key | ✅ |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name | ❌ |
-| `CLOUDINARY_API_KEY` | Cloudinary API key | ❌ |
-| `CLOUDINARY_API_SECRET` | Cloudinary secret | ❌ |
-
----
 
 ## 🤝 Contributing
 
