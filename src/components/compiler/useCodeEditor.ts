@@ -45,70 +45,33 @@ const LANGUAGES = [
 ];
 
 const DEFAULT_CODE: Record<string, string> = {
-  python: `name = input("Enter your name: ")
-age = int(input("Enter your age: "))
-
-print(f"Hello, {name}!")
-print(f"You are {age} years old!")`,
+  python: `print("TalentPath")
+print("Developed by: Swamy Rayudu & Siva Durga Prasad")`,
   
-  javascript: `console.log("Hello, World!");
-const sum = 10 + 20;
-console.log("Sum:", sum);`,
+  javascript: `console.log("TalentPath");
+console.log("Developed by: Swamy Rayudu & Siva Durga Prasad");`,
   
-  java: `import java.util.Scanner;
-
-public class Main {
+  java: `public class Main {
     public static void main(String[] args) {
-        Scanner sc = new Scanner(System.in);
-        
-        System.out.print("Enter name: ");
-        String name = sc.nextLine();
-        
-        System.out.print("Enter age: ");
-        int age = sc.nextInt();
-        
-        System.out.println("Hello, " + name + "!");
-        System.out.println("Age: " + age);
-        
-        sc.close();
+        System.out.println("TalentPath");
+        System.out.println("Developed by: Swamy Rayudu & Siva Durga Prasad");
     }
 }`,
 
   cpp: `#include <iostream>
-#include <string>
 using namespace std;
 
 int main() {
-    string name;
-    int age;
-    
-    cout << "Enter name: ";
-    getline(cin, name);
-    
-    cout << "Enter age: ";
-    cin >> age;
-    
-    cout << "Hello, " << name << "!" << endl;
-    cout << "Age: " << age << endl;
-    
+    cout << "TalentPath" << endl;
+    cout << "Developed by: Swamy Rayudu & Siva Durga Prasad" << endl;
     return 0;
 }`,
 
   c: `#include <stdio.h>
 
 int main() {
-    char name[100];
-    int age;
-    
-    printf("Enter name: ");
-    fgets(name, sizeof(name), stdin);
-    
-    printf("Enter age: ");
-    scanf("%d", &age);
-    
-    printf("Hello, %s", name);
-    printf("Age: %d\\n", age);
-    
+    printf("TalentPath\\n");
+    printf("Developed by: Swamy Rayudu & Siva Durga Prasad\\n");
     return 0;
 }`,
 
@@ -117,17 +80,8 @@ int main() {
 import "fmt"
 
 func main() {
-    var name string
-    var age int
-    
-    fmt.Print("Enter name: ")
-    fmt.Scanln(&name)
-    
-    fmt.Print("Enter age: ")
-    fmt.Scanln(&age)
-    
-    fmt.Printf("Hello, %s!\\n", name)
-    fmt.Printf("Age: %d\\n", age)
+    fmt.Println("TalentPath")
+    fmt.Println("Developed by: Swamy Rayudu & Siva Durga Prasad")
 }`,
 };
 
@@ -136,22 +90,26 @@ function extractPrompts(code: string, language: string): string[] {
     const prompts: string[] = [];
     
     if (language === 'python') {
-      const regexWithPrompt = /input\s*\(\s*["']([^"']*)["']\s*\)/g;
-      const regexWithoutPrompt = /input\s*\(\s*\)/g;
+      // Remove all comments from code before extracting input() calls
+      const codeWithoutComments = code
+        .split('\n')
+        .map(line => {
+          const commentIndex = line.indexOf('#');
+          return commentIndex >= 0 ? line.substring(0, commentIndex) : line;
+        })
+        .join('\n');
+      
+      // Match only input() function calls, not print() or other functions
+      const inputRegex = /\binput\s*\(\s*(?:["']([^"']*)["'])?\s*\)/g;
       
       let match;
       let inputCount = 0;
       
-      while ((match = regexWithPrompt.exec(code)) !== null) {
-        prompts.push(match[1] || `Input ${inputCount + 1}`);
+      while ((match = inputRegex.exec(codeWithoutComments)) !== null) {
         inputCount++;
-      }
-      
-      const withoutPromptMatches = code.match(regexWithoutPrompt) || [];
-      const emptyInputCount = withoutPromptMatches.length - inputCount;
-      
-      for (let i = 0; i < emptyInputCount; i++) {
-        prompts.push(`Input ${inputCount + i + 1}`);
+        // Use the prompt text if available, otherwise use generic label
+        const promptText = match[1] && match[1].trim() ? match[1].trim() : `Input ${inputCount}`;
+        prompts.push(promptText);
       }
       
     } else if (language === 'java') {
@@ -215,8 +173,25 @@ function extractPrompts(code: string, language: string): string[] {
 }
 
 export function useCodeEditor() {
-  const [language, setLanguage] = useState('python');
-  const [code, setCode] = useState(DEFAULT_CODE.python);
+  // Initialize with session storage or default
+  const getInitialLanguage = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('compiler-language');
+      return saved || 'python';
+    }
+    return 'python';
+  };
+
+  const getInitialCode = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('compiler-code');
+      if (saved) return saved;
+    }
+    return DEFAULT_CODE.python;
+  };
+
+  const [language, setLanguage] = useState(getInitialLanguage());
+  const [code, setCode] = useState(getInitialCode());
   const [userInputs, setUserInputs] = useState<string[]>([]);
   const [output, setOutput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -224,6 +199,12 @@ export function useCodeEditor() {
   const [snippetsEnabled, setSnippetsEnabled] = useState(true);
   const [showInputModal, setShowInputModal] = useState(false);
   const [activeTab, setActiveTab] = useState('editor');
+  
+  // Terminal-style input handling
+  const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
+  const [currentInputIndex, setCurrentInputIndex] = useState(0);
+  const [terminalInput, setTerminalInput] = useState('');
+  const [waitingForInput, setWaitingForInput] = useState(false);
   
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
@@ -237,6 +218,18 @@ export function useCodeEditor() {
   const isProcessingRef = useRef<boolean>(false);
   const enterPressCountRef = useRef<number>(0);
   const lastRunTimeRef = useRef<number>(0);
+
+  // Auto-save code and language to session storage
+  useEffect(() => {
+    const saveTimer = setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('compiler-code', code);
+        sessionStorage.setItem('compiler-language', language);
+      }
+    }, 500); // Debounce save by 500ms
+
+    return () => clearTimeout(saveTimer);
+  }, [code, language]);
 
   // Stable prompts extraction with proper memoization
   const prompts = useMemo(() => {
@@ -266,10 +259,16 @@ export function useCodeEditor() {
 
   const handleLanguageChange = useCallback((newLanguage: string) => {
     setLanguage(newLanguage);
-    setCode(DEFAULT_CODE[newLanguage] || '');
+    const newCode = DEFAULT_CODE[newLanguage] || '';
+    setCode(newCode);
     setUserInputs([]);
     setOutput('');
     setShowInputModal(false);
+    // Save to session storage
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('compiler-language', newLanguage);
+      sessionStorage.setItem('compiler-code', newCode);
+    }
   }, []);
 
   // Optimized code change handler with improved debouncing
@@ -327,7 +326,7 @@ export function useCodeEditor() {
     if (editorRef.current && monacoRef.current) {
       if (newValue) {
         registerSnippets();
-        toast.success('Code Snippets enabled 🎯');
+        toast.success('Code Snippets enabled');
       } else {
         if (completionProviderRef.current) {
           completionProviderRef.current.dispose();
@@ -350,10 +349,9 @@ export function useCodeEditor() {
   }, [userInputs, prompts]);
 
   const handleRunClick = useCallback(() => {
-    // Prevent multiple rapid run executions
     const now = Date.now();
     if (now - lastRunTimeRef.current < 1000) {
-      return; // Ignore if run was triggered less than 1 second ago
+      return;
     }
     lastRunTimeRef.current = now;
 
@@ -362,17 +360,51 @@ export function useCodeEditor() {
       return;
     }
 
+    // Switch to output tab and clear terminal
+    setActiveTab('output');
+    setTerminalOutput(['$ Executing code...\n']);
+    setUserInputs([]);
+    setCurrentInputIndex(0);
+    setTerminalInput('');
+    
     if (prompts.length === 0) {
       executeCode([]);
     } else {
-      setShowInputModal(true);
-      setActiveTab('input');
-      toast.info(`Please provide ${prompts.length} input(s)`);
+      // Show first input prompt in terminal (don't add extra colon if prompt already ends with punctuation)
+      const firstPrompt = prompts[0];
+      const needsColon = !firstPrompt.match(/[:\s?!]$/);
+      setTerminalOutput([`$ Executing code...\n\n${firstPrompt}${needsColon ? ': ' : ''}`]);
+      setWaitingForInput(true);
     }
-  }, [code, prompts.length]);
+  }, [code, prompts]);
+
+  const handleTerminalInputSubmit = useCallback(() => {
+    if (!terminalInput.trim() || !waitingForInput) return;
+    
+    const newInputs = [...userInputs, terminalInput];
+    setUserInputs(newInputs);
+    
+    // Add input to terminal output
+    setTerminalOutput(prev => [...prev, terminalInput + '\n']);
+    
+    if (currentInputIndex < prompts.length - 1) {
+      // Show next prompt (don't add extra colon if prompt already ends with punctuation)
+      const nextIndex = currentInputIndex + 1;
+      setCurrentInputIndex(nextIndex);
+      const nextPrompt = prompts[nextIndex];
+      const needsColon = !nextPrompt.match(/[:\s?!]$/);
+      setTerminalOutput(prev => [...prev, `${nextPrompt}${needsColon ? ': ' : ''}`]);
+      setTerminalInput('');
+    } else {
+      // All inputs collected, execute
+      setWaitingForInput(false);
+      setTerminalOutput(prev => [...prev, '\n━━━ Compiling & Running ━━━\n\n']);
+      setTerminalInput('');
+      executeCode(newInputs);
+    }
+  }, [terminalInput, waitingForInput, currentInputIndex, prompts, userInputs]);
 
   const handleSubmitInputs = useCallback(() => {
-    // Prevent duplicate submissions
     if (isProcessingRef.current) {
       return;
     }
@@ -387,7 +419,6 @@ export function useCodeEditor() {
     setActiveTab('output');
     executeCode(userInputs);
     
-    // Reset processing flag after a delay
     setTimeout(() => {
       isProcessingRef.current = false;
     }, 1000);
@@ -459,7 +490,6 @@ export function useCodeEditor() {
     const stdin = inputs.join('\n');
 
     setIsRunning(true);
-    setOutput('⏳ Compiling and running...\n');
     setActiveTab('output');
 
     try {
@@ -481,66 +511,46 @@ export function useCodeEditor() {
 
       const result = await response.json();
 
+      // Debug logging
+      console.log('Frontend received result:', {
+        success: result.success,
+        hasOutput: !!result.output,
+        outputLength: result.output?.length || 0,
+        debug: result.debug,
+      });
+
       if (result.timeout) {
-        setOutput(result.stderr);
-        toast.error('Execution timeout (10 seconds)!');
+        setTerminalOutput(prev => [...prev, '\n❌ Timeout Error\n', result.stderr]);
         setIsRunning(false);
         return;
       }
 
       if (result.limitExceeded) {
         const displayOutput = result.output ? result.output + '\n\n' + result.stderr : result.stderr;
-        setOutput(displayOutput);
-        toast.warning('Output limit exceeded!');
+        setTerminalOutput(prev => [...prev, '\n⚠️  Output Limit Exceeded\n', displayOutput]);
         setIsRunning(false);
         return;
       }
 
       if (result.success) {
-        let rawOutput = result.output || '';
+        const rawOutput = result.output || '';
         
-        if (prompts.length > 0 && inputs.length > 0) {
-          prompts.forEach(prompt => {
-            const escapedPrompt = prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            rawOutput = rawOutput.replace(new RegExp(escapedPrompt + '\\s*', 'g'), '');
-          });
-          
-          inputs.forEach(input => {
-            if (input) {
-              const escapedInput = input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              rawOutput = rawOutput.replace(new RegExp('^' + escapedInput + '$', 'gm'), '');
-            }
-          });
-          
-          rawOutput = rawOutput
-            .split('\n')
-            .filter((line: string) => line.trim() !== '')
-            .join('\n')
-            .trim();
-        }
-        
-        const finalOutput = rawOutput.trim();
-        
-        if (finalOutput) {
-          setOutput(finalOutput + '\n\n✅ Code Execution Successful');
+        if (rawOutput && rawOutput.trim()) {
+          setTerminalOutput(prev => [...prev, rawOutput, '\n\n✅ Process exited with code 0\n']);
         } else {
-          setOutput('✅ Code Execution Successful');
+          setTerminalOutput(prev => [...prev, '\n✅ Code executed successfully (no output)\n']);
         }
-        
-        toast.success('Executed successfully!');
         
         if (prompts.length > 0) {
           setUserInputs(new Array(prompts.length).fill(''));
         }
       } else {
         const errorOutput = result.stderr || result.output || result.error || 'Execution failed. Please check your code.';
-        setOutput(errorOutput);
-        toast.error('Execution failed');
+        setTerminalOutput(prev => [...prev, '\n❌ Execution Failed\n\n', errorOutput, '\n']);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      setOutput(`❌ Network Error\n\n${errorMessage}\n\nPlease check your connection and try again.`);
-      toast.error('Failed to execute');
+      setTerminalOutput(prev => [...prev, `\n❌ Network Error\n\n${errorMessage}\n`]);
     } finally {
       setIsRunning(false);
       isProcessingRef.current = false;
@@ -596,26 +606,6 @@ export function useCodeEditor() {
     
     registerCompletionProviders(monaco);
     registerSnippets();
-    
-    // Add keyboard shortcut with enhanced throttling
-    let lastCommandTime = 0;
-    let commandCount = 0;
-    
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      const now = Date.now();
-      
-      // Reset counter if more than 2 seconds passed
-      if (now - lastCommandTime > 2000) {
-        commandCount = 0;
-      }
-      
-      // Allow max 1 command per second, max 3 within 2 seconds
-      if (now - lastCommandTime > 1000 && commandCount < 3) {
-        lastCommandTime = now;
-        commandCount++;
-        handleRunClick();
-      }
-    });
 
     // Performance optimizations
     editor.updateOptions({
@@ -691,6 +681,10 @@ export function useCodeEditor() {
     prompts,
     allInputsFilled,
     currentLang,
+    terminalOutput,
+    terminalInput,
+    waitingForInput,
+    currentInputIndex,
     
     // Refs
     inputRefs,
@@ -703,10 +697,12 @@ export function useCodeEditor() {
     handleRunClick,
     handleSubmitInputs,
     handleInputKeyDown,
-    handleInputChange, // New optimized handler
+    handleInputChange,
     handleEditorDidMount,
+    handleTerminalInputSubmit,
     setUserInputs,
     setActiveTab,
+    setTerminalInput,
     
     // Options
     editorOptions,
