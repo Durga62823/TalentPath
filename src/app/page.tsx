@@ -118,36 +118,36 @@ const developers = [
       whatsapp: 'https://wa.me/919030512334',
     },
   },
-  {
-    name: 'P. Hima',
-    role: 'Full Stack Developer',
-    socials: {
-      github: 'https://github.com',
-      linkedin: 'https://linkedin.com',
-      instagram: 'https://instagram.com',
-      whatsapp: 'https://wa.me/',
-    },
-  },
-  {
-    name: 'Ch. Abhishek',
-    role: 'Full Stack Developer',
-    socials: {
-      github: 'https://github.com',
-      linkedin: 'https://linkedin.com',
-      instagram: 'https://instagram.com',
-      whatsapp: 'https://wa.me/',
-    },
-  },
-   {
-    name: 'S Dhanush',
-    role: 'Full Stack Developer',
-    socials: {
-      github: 'https://github.com/swamyrayudu',
-      linkedin: 'https://www.linkedin.com/in/dhanush-srinivasa-4a6678300/',
-      instagram: 'https://www.instagram.com',
-      whatsapp: 'https://wa.me/919030512334',
-    },
-  }
+  // {
+  //   name: 'P. Hima',
+  //   role: 'Full Stack Developer',
+  //   socials: {
+  //     github: 'https://github.com',
+  //     linkedin: 'https://linkedin.com',
+  //     instagram: 'https://instagram.com',
+  //     whatsapp: 'https://wa.me/',
+  //   },
+  // },
+  // {
+  //   name: 'Ch. Abhishek',
+  //   role: 'Full Stack Developer',
+  //   socials: {
+  //     github: 'https://github.com',
+  //     linkedin: 'https://linkedin.com',
+  //     instagram: 'https://instagram.com',
+  //     whatsapp: 'https://wa.me/',
+  //   },
+  // },
+  //  {
+  //   name: 'S Dhanush',
+  //   role: 'Full Stack Developer',
+  //   socials: {
+  //     github: 'https://github.com/swamyrayudu',
+  //     linkedin: 'https://www.linkedin.com/in/dhanush-srinivasa-4a6678300/',
+  //     instagram: 'https://www.instagram.com',
+  //     whatsapp: 'https://wa.me/919030512334',
+  //   },
+  // }
 ];
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -188,7 +188,7 @@ export default function Home() {
     fetch('/api/users/stats')
       .then((res) => res.json())
       .then((data) => setUserStats(data))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleGoogleSignIn = async () => {
