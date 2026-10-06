@@ -13,6 +13,13 @@ import { db } from './db';
 import { users } from './db/schema';
 import { eq } from 'drizzle-orm';
 
+// Side effect import to initialize the background worker only in development
+if (process.env.NODE_ENV !== 'production') {
+  import('./email-worker')
+    .then(() => console.log('[Worker] Worker imported successfully in development'))
+    .catch((err) => console.error('[Worker] Error loading worker:', err));
+}
+
 /**
  * NextAuth Configuration
  * 
@@ -114,6 +121,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           : null;
       }
       return session;
+    },
+  },
+  events: {
+    async createUser({ user }) {
+      if (user.email) {
+        try {
+          if (process.env.NODE_ENV === 'production') {
+            const { sendWelcomeEmail } = await import('./mail');
+            await sendWelcomeEmail(user.email, user.name || 'User');
+            console.log(`[NextAuth Event] Successfully sent welcome email directly to user: ${user.email}`);
+          } else {
+            const { emailQueue } = await import('./email-queue');
+            await emailQueue.add('sendWelcomeEmail', {
+              email: user.email,
+              name: user.name || 'User',
+            });
+            console.log(`[NextAuth Event] Successfully queued welcome email job for user: ${user.email}`);
+          }
+        } catch (error) {
+          console.error('[NextAuth Event] Failed to send/queue welcome email:', error);
+        }
+      }
     },
   },
   pages: {

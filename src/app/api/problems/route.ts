@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { userProgress, problems, users, visibleProblems } from '@/lib/db/schema';
+import { userProgress, problems, users, visibleProblems, patternProblems, dsaPatterns } from '@/lib/db/schema';
 import { eq, and, desc, sql, or, ilike } from 'drizzle-orm';
+import { recalculatePatternCounts } from '@/lib/db/patterns';
+import { patternCache } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 300; // Cache for 5 minutes
@@ -78,15 +80,20 @@ export async function GET(request: NextRequest) {
     if (topic && topic !== 'all' && topic !== 'undefined') {
       const topicSlug = topic.toLowerCase().replace(/\s+/g, '-');
       console.log(`🏷️  Topic filter: "${topic}" → slug: "${topicSlug}"`);
+      // Each set-returning function gets an explicit `alias(column)` so the
+      // comparison binds to the unnested value. A bare `AS slug` instead binds
+      // to whatever `slug` resolves to in the enclosing query — and once
+      // dsa_patterns is joined in (it also has a `slug` column) Postgres fails
+      // the whole query with "column reference slug is ambiguous".
       conditions.push(
         sql`(
           EXISTS (
-            SELECT 1 FROM ${topicTagsExpr} AS tag 
-            WHERE LOWER(tag) = LOWER(${topic})
+            SELECT 1 FROM ${topicTagsExpr} AS topic_tag_values(value)
+            WHERE LOWER(topic_tag_values.value) = LOWER(${topic})
           )
           OR EXISTS (
-            SELECT 1 FROM ${topicSlugsExpr} AS slug
-            WHERE LOWER(slug) = LOWER(${topicSlug})
+            SELECT 1 FROM ${topicSlugsExpr} AS topic_slug_values(value)
+            WHERE LOWER(topic_slug_values.value) = LOWER(${topicSlug})
           )
         )`
       );
@@ -96,8 +103,8 @@ export async function GET(request: NextRequest) {
       const companyName = decodeURIComponent(company).replace(/-/g, ' ');
       conditions.push(
         sql`EXISTS (
-          SELECT 1 FROM ${companyTagsExpr} AS tag 
-          WHERE LOWER(tag) = LOWER(${companyName})
+          SELECT 1 FROM ${companyTagsExpr} AS company_tag_values(value)
+          WHERE LOWER(company_tag_values.value) = LOWER(${companyName})
         )`
       );
     }
@@ -149,10 +156,36 @@ export async function GET(request: NextRequest) {
 
     const total = countResult[0]?.count || 0;
 
-    // Fetch paginated results
+    // Fetch paginated results with pattern info
     const result = await db
-      .select()
+      .select({
+        id: baseTable.id,
+        title: baseTable.title,
+        slug: baseTable.slug,
+        isPremium: baseTable.isPremium,
+        difficulty: baseTable.difficulty,
+        platform: baseTable.platform,
+        likes: baseTable.likes,
+        dislikes: baseTable.dislikes,
+        acceptanceRate: baseTable.acceptanceRate,
+        url: baseTable.url,
+        topicTags: baseTable.topicTags,
+        companyTags: baseTable.companyTags,
+        mainTopics: baseTable.mainTopics,
+        topicSlugs: baseTable.topicSlugs,
+        accepted: baseTable.accepted,
+        submissions: baseTable.submissions,
+        similarQuestions: baseTable.similarQuestions,
+        isVisibleToUsers: baseTable.isVisibleToUsers,
+        createdAt: baseTable.createdAt,
+        updatedAt: baseTable.updatedAt,
+        patternId: dsaPatterns.id,
+        patternName: dsaPatterns.name,
+        patternSlug: dsaPatterns.slug,
+      })
       .from(baseTable)
+      .leftJoin(patternProblems, eq(baseTable.id, patternProblems.problemId))
+      .leftJoin(dsaPatterns, eq(patternProblems.patternId, dsaPatterns.id))
       .where(whereClause || sql`TRUE`)
       .orderBy(orderByClause)
       .limit(limit)
@@ -306,9 +339,24 @@ export async function POST(request: NextRequest) {
 
       const result = await db.insert(problems).values(problemData).returning();
 
+      if (result.length > 0 && data.patternId) {
+        await db.insert(patternProblems).values({
+          id: crypto.randomUUID(),
+          patternId: data.patternId,
+          problemId: result[0].id
+        });
+        await recalculatePatternCounts([data.patternId]);
+      }
+
+      // Clear pattern cache
+      await patternCache.clear();
+
       return NextResponse.json({
         success: true,
-        data: result[0],
+        data: {
+          ...result[0],
+          patternId: data.patternId || null
+        },
       });
     }
   } catch (error) {

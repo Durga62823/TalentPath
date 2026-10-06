@@ -17,6 +17,7 @@ import {
   bigint,
   decimal,
   jsonb,
+  date,
   index 
 } from 'drizzle-orm/pg-core';
 
@@ -559,6 +560,38 @@ export const interviewTranscripts = pgTable('interview_transcripts', {
   timestampIdx: index('idx_interview_transcripts_timestamp').on(table.timestamp),
 }));
 
+// ============================================
+// DSA PATTERNS SYSTEM
+// ============================================
+
+export const dsaPatterns = pgTable('dsa_patterns', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull().unique(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  topic: text('topic'),
+  orderIndex: integer('order_index').default(0).notNull(),
+  problemCount: integer('problem_count').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const patternProblems = pgTable('pattern_problems', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  patternId: text('pattern_id').notNull().references(() => dsaPatterns.id, { onDelete: 'cascade' }),
+  problemId: bigint('problem_id', { mode: 'number' }).notNull().references(() => problems.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  patternIdIdx: index('idx_pattern_problems_pattern_id').on(table.patternId),
+  problemIdIdx: index('idx_pattern_problems_problem_id').on(table.problemId),
+  uniquePatternProblem: index('idx_pattern_problems_unique').on(table.patternId, table.problemId),
+}));
+
+export type DsaPattern = typeof dsaPatterns.$inferSelect;
+export type DsaPatternInsert = typeof dsaPatterns.$inferInsert;
+export type PatternProblem = typeof patternProblems.$inferSelect;
+export type PatternProblemInsert = typeof patternProblems.$inferInsert;
+
 // Chat History Types
 export type ChatConversation = typeof chatConversations.$inferSelect;
 export type ChatConversationInsert = typeof chatConversations.$inferInsert;
@@ -669,3 +702,34 @@ export type SubmissionVerdict = 'pending' | 'accepted' | 'wrong_answer' | 'runti
 export type InterviewType = 'dsa-coding' | 'system-design' | 'behavioral' | 'company-specific';
 export type InterviewStatus = 'in-progress' | 'completed' | 'abandoned';
 
+
+// ============================================
+// DAILY CHALLENGE TABLES
+// ============================================
+
+// One problem per calendar day (UTC). Rows are written lazily the first time a
+// day is asked for, which keeps the history stable without a scheduled job.
+export const dailyChallenges = pgTable('daily_challenges', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  challengeDate: date('challenge_date').notNull().unique(),
+  problemId: bigint('problem_id', { mode: 'number' }).notNull(),
+  difficulty: text('difficulty'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  dateIdx: index('idx_daily_challenges_date').on(table.challengeDate),
+}));
+
+export const dailyChallengeCompletions = pgTable('daily_challenge_completions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  challengeDate: date('challenge_date').notNull(),
+  problemId: bigint('problem_id', { mode: 'number' }).notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userDateIdx: index('idx_daily_completions_user_date').on(table.userId, table.challengeDate),
+}));
+
+export type DailyChallenge = typeof dailyChallenges.$inferSelect;
+export type DailyChallengeInsert = typeof dailyChallenges.$inferInsert;
+export type DailyChallengeCompletion = typeof dailyChallengeCompletions.$inferSelect;
+export type DailyChallengeCompletionInsert = typeof dailyChallengeCompletions.$inferInsert;
